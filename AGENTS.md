@@ -10,6 +10,8 @@
 
 Run locally: `python -m streamlit run streamlit_app.py` (the `streamlit` console script installs to `~/.local/bin`, which is not on PATH, so prefer `python -m streamlit`). Deploy on Streamlit Community Cloud by pointing it at `streamlit_app.py`; deps come from `requirements.txt`.
 
+The optional sales file uploads via the "Файл продаж" block; required column is `Штрихкод` (others: Кол-во продаж, Выручка, Валовая прибыль), matched to the price list by barcode. A ready-made template lives at `шаблон_продаж_ЗЯ.xlsx` (repo root) and is also downloadable in-app via the sidebar button (`_sales_template_bytes()`); keep the two in sync if you change the headers.
+
 Gotchas when editing `streamlit_app.py`:
 - The module loader only accepts file *paths* (checks `Path.exists()`/suffix), so uploads are written to a temp dir before calling the API — keep that pattern.
 - Avoid pandas `Styler` (`df.style.format`) — it requires `jinja2`, which is not a dependency; format values to strings and use plain `st.dataframe` instead.
