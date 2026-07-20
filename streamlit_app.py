@@ -59,7 +59,7 @@ COMPETITOR_LABELS = {
     "Цена_Оптовик_Редукторный": "Оптовик (Редукторный)",
 }
 
-APP_VERSION = "2026-07-20"
+APP_VERSION = "2026-07-20.2"
 
 GREEN = "#1a7f37"
 GREEN_LIGHT = "#2ea043"
@@ -207,7 +207,10 @@ def _build_excel(
 def _compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """Считает наценку, маржу, отклонение от рынка и сигналы по методике модуля."""
     d = df.copy()
-    comp = d[COMPETITOR_COLUMNS]
+    # Приводим цены конкурентов к числам: пустые/нечисловые столбцы иначе остаются
+    # object, из-за чего Ср_рынок/Откл_рынок становятся object и ломают nlargest.
+    comp = d[COMPETITOR_COLUMNS].apply(pd.to_numeric, errors="coerce")
+    d[COMPETITOR_COLUMNS] = comp
     d["Ср_рынок"] = comp.mean(axis=1)
     d["Медиана_рынок"] = comp.median(axis=1)
     d["Мин_конкурент"] = comp.min(axis=1)
@@ -318,7 +321,7 @@ with st.sidebar:
         data=_sales_template_bytes(),
         file_name="шаблон_продаж_ЗЯ.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width="stretch",
         help="Готовый шаблон с нужными колонками и примерами строк.",
         key="dl_tmpl_sidebar",
     )
@@ -393,7 +396,7 @@ with c2:
         data=excel_bytes,
         file_name="Зеленое_Яблоко_калькулятор.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width="stretch",
     )
 
 tab_dash, tab_scen, tab_data = st.tabs(
@@ -450,7 +453,7 @@ with tab_dash:
             )
             .properties(height=210)
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
 
     with g2:
         st.markdown("##### Распределение по уровню маржи")
@@ -473,7 +476,7 @@ with tab_dash:
             )
             .properties(height=210)
         )
-        st.altair_chart(chart2, use_container_width=True)
+        st.altair_chart(chart2, width="stretch")
 
     st.divider()
     st.markdown("#### 🧠 Выводы AI-агента")
@@ -528,7 +531,7 @@ with tab_scen:
         "Ср. ВП/ед": scen["ВП_ед"].apply(_fmt_num),
         "Вывод": scen["Вывод"],
     })
-    st.dataframe(show, use_container_width=True, hide_index=True)
+    st.dataframe(show, width="stretch", hide_index=True)
 
     st.markdown("##### Средняя маржа по сценариям")
     scen_chart = (
@@ -554,7 +557,7 @@ with tab_scen:
         )
         .properties(height=300)
     )
-    st.altair_chart(scen_chart, use_container_width=True)
+    st.altair_chart(scen_chart, width="stretch")
 
     base_m = scen.loc[scen["Сценарий"] == "Текущая", "Маржа"].iloc[0]
     c1_m = scen.loc[scen["Сценарий"] == "С1 · Средняя рынка", "Маржа"].iloc[0]
@@ -576,7 +579,7 @@ with tab_data:
         "ВП/ед": tm["ВП_ед"].apply(_fmt_num).values,
         "Цена ЗЯ": tm["Розничная_цена_ЗЯ"].apply(_fmt_num).values,
     })
-    st.dataframe(top_margin, use_container_width=True, hide_index=True)
+    st.dataframe(top_margin, width="stretch", hide_index=True)
 
     st.markdown("#### Топ-10 позиций выше рынка")
     ta = metrics[metrics["Сигнал"] == "Выше рынка"].nlargest(10, "Откл_рынок")
@@ -588,7 +591,7 @@ with tab_data:
             "Цена ЗЯ": ta["Розничная_цена_ЗЯ"].apply(_fmt_num).values,
             "Ср. рынок": ta["Ср_рынок"].apply(_fmt_num).values,
         })
-        st.dataframe(top_above, use_container_width=True, hide_index=True)
+        st.dataframe(top_above, width="stretch", hide_index=True)
     else:
         st.caption("Позиций выше рынка не найдено.")
 
