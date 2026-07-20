@@ -19,6 +19,7 @@ BI-дашборд с выводами прямо в браузере.
 """
 from __future__ import annotations
 
+import io
 import logging
 import tempfile
 from pathlib import Path
@@ -26,6 +27,9 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from za_price_calculator.config import COMPETITOR_COLUMNS, THRESHOLDS
 from za_price_calculator.exceptions import ZAPriceCalculatorError
@@ -59,6 +63,46 @@ GREEN_LIGHT = "#2ea043"
 RED = "#c0392b"
 AMBER = "#d4a017"
 BLUE = "#1f6feb"
+
+# --- Шаблон файла продаж ---
+SALES_TEMPLATE_HEADERS = ["Штрихкод", "Кол-во продаж", "Выручка", "Валовая прибыль"]
+# Примеры используют реальные штрихкоды из прайса — при загрузке они сопоставятся с товарами.
+SALES_TEMPLATE_ROWS = [
+    ("4665272570017", 120, 3480, 900),
+    ("4602984001637", 85, 8330, 2100),
+    ("8690511171614", 40, 25960, 5200),
+]
+
+
+@st.cache_data(show_spinner=False)
+def _sales_template_bytes() -> bytes:
+    """Формирует Excel-шаблон файла продаж с заголовками и примерами строк."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Продажи"
+
+    header_fill = PatternFill("solid", fgColor="1A7F37")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    for ci, title in enumerate(SALES_TEMPLATE_HEADERS, start=1):
+        cell = ws.cell(1, ci, title)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for ri, row in enumerate(SALES_TEMPLATE_ROWS, start=2):
+        for ci, value in enumerate(row, start=1):
+            cell = ws.cell(ri, ci, value)
+            if ci == 1:  # штрихкод храним как текст, чтобы не терять ведущие нули
+                cell.number_format = "@"
+
+    for ci, width in enumerate((22, 16, 14, 18), start=1):
+        ws.column_dimensions[get_column_letter(ci)].width = width
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 # =============================== Оформление =================================
 st.markdown(
@@ -255,10 +299,21 @@ with st.sidebar:
     sales_upload = st.file_uploader(
         "Файл продаж (опционально)",
         type=["xlsx", "xls", "xlsm"],
-        help="Колонки: Штрихкод, Кол-во продаж, Выручка, Валовая прибыль.",
+        help="Колонки: Штрихкод (обязательно), Кол-во продаж, Выручка, Валовая прибыль. "
+             "Строки сопоставляются с прайсом по штрихкоду.",
+    )
+    st.download_button(
+        "📥 Скачать шаблон продаж (.xlsx)",
+        data=_sales_template_bytes(),
+        file_name="шаблон_продаж_ЗЯ.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help="Готовый шаблон с нужными колонками и примерами строк.",
     )
     st.caption(
-        "Конкуренты: 7 Континент, Европейский, Тропики, Мята, Отличный, "
+        "Файл продаж загружается в блок «Файл продаж». Обязательная колонка — "
+        "**Штрихкод**; остальные (Кол-во продаж, Выручка, Валовая прибыль) — опциональны. "
+        "Конкуренты в прайсе: 7 Континент, Европейский, Тропики, Мята, Отличный, "
         "Оптовик (Молоток), Оптовик (Редукторный)."
     )
 
