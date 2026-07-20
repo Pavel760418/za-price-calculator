@@ -6,7 +6,14 @@
 `za_price_calculator` is a standalone Python CLI/library (no database or external services). It reads an input price-list `.xlsx` and generates a formatted 6-sheet Excel workbook. `streamlit_app.py` at the repo root is an optional web front-end (for Streamlit Community Cloud) that wraps the same `ZAPriceCalculator` API. Runtime deps: `pandas`, `openpyxl`, `streamlit` (installed by the update script; also listed in `requirements.txt`).
 
 ### Streamlit web app
-Run locally: `python -m streamlit run streamlit_app.py` (the `streamlit` console script installs to `~/.local/bin`, which is not on PATH, so prefer `python -m streamlit`). Deploy on Streamlit Community Cloud by pointing it at `streamlit_app.py`; deps come from `requirements.txt`. The module loader only accepts file *paths* (it checks `Path.exists()`/suffix), so `streamlit_app.py` writes uploads to a temp dir before calling the API — keep that pattern if editing.
+`streamlit_app.py` is a Russian-language AI-agent front-end for the «Зеленое Яблоко» chain: it generates the Excel workbook AND renders an in-app BI dashboard (KPI cards, Altair charts, scenario comparison, auto-generated conclusions). Dashboard metrics are recomputed in pandas mirroring the module's methodology (наценка = ВП/закупка, маржа = ВП/цена, отклонение от средней рынка, сценарии С1–С3, пороги из `config.THRESHOLDS`).
+
+Run locally: `python -m streamlit run streamlit_app.py` (the `streamlit` console script installs to `~/.local/bin`, which is not on PATH, so prefer `python -m streamlit`). Deploy on Streamlit Community Cloud by pointing it at `streamlit_app.py`; deps come from `requirements.txt`.
+
+Gotchas when editing `streamlit_app.py`:
+- The module loader only accepts file *paths* (checks `Path.exists()`/suffix), so uploads are written to a temp dir before calling the API — keep that pattern.
+- Avoid pandas `Styler` (`df.style.format`) — it requires `jinja2`, which is not a dependency; format values to strings and use plain `st.dataframe` instead.
+- Altair treats `.` in a field name as nested access, so keep chart column names dot-free (e.g. `Маржа`, not `Ср. маржа`).
 
 ### Running (hello-world / end-to-end)
 Run from the repo root (the package uses absolute `za_price_calculator.*` imports, so the root must be on `sys.path`):
