@@ -45,6 +45,7 @@ st.set_page_config(
     page_title="Зеленое Яблоко · AI-агент ценообразования",
     page_icon="🍏",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # --- Названия конкурентов для человекочитаемых подписей ---
@@ -309,6 +310,7 @@ with st.sidebar:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
         help="Готовый шаблон с нужными колонками и примерами строк.",
+        key="dl_tmpl_sidebar",
     )
     st.caption(
         "Файл продаж загружается в блок «Файл продаж». Обязательная колонка — "
@@ -322,6 +324,26 @@ if source_upload is None:
         "⬅️ Загрузите прайс-лист на панели слева, чтобы AI-агент рассчитал цены "
         "и показал дашборд с выводами по сценариям."
     )
+    st.markdown("#### С чего начать")
+    step1, step2 = st.columns(2)
+    with step1:
+        st.markdown(
+            "**1. Прайс-лист (обязательно)** — загрузите на панели слева "
+            "в блоке «Прайс-лист». Excel с ценами ЗЯ и конкурентов."
+        )
+    with step2:
+        st.markdown(
+            "**2. Продажи (опционально)** — загрузите в блок «Файл продаж». "
+            "Обязательная колонка — **Штрихкод**. Ниже можно скачать готовый шаблон:"
+        )
+        st.download_button(
+            "📥 Скачать шаблон продаж (.xlsx)",
+            data=_sales_template_bytes(),
+            file_name="шаблон_продаж_ЗЯ.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Готовый шаблон с нужными колонками и примерами строк.",
+            key="dl_tmpl_intro",
+        )
     st.stop()
 
 # --- Загрузка и расчёт ---
