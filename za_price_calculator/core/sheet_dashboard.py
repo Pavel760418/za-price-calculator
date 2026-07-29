@@ -6,6 +6,17 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from za_price_calculator.config import PALETTE, SHEETS
+from za_price_calculator.core.sheet_calculations import (
+    COL_AVG_MKT,
+    COL_DEV_AVG,
+    COL_MARGIN_CUR,
+    COL_MARGIN_SIG,
+    COL_MARKUP_CUR,
+    COL_RETAIL,
+    COL_RISK,
+    COL_SIGNAL,
+    COL_VP_CUR,
+)
 from za_price_calculator.styling.styles import (
     HDR_ALIGN,
     NUM2,
@@ -16,6 +27,10 @@ from za_price_calculator.styling.styles import (
     fill,
     font,
 )
+
+
+def _L(col: int) -> str:
+    return get_column_letter(col)
 
 
 def _kpi(ws, row, col, label, formula, num_fmt="#,##0", bg=PALETTE.mid_blue):
@@ -60,6 +75,11 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
     cs = f"'{SHEETS.calculations}'"
     last = n_rows + 2 if n_rows else 3
 
+    sig, mrg, mkup = _L(COL_SIGNAL), _L(COL_MARGIN_CUR), _L(COL_MARKUP_CUR)
+    risk, vp, retail = _L(COL_RISK), _L(COL_VP_CUR), _L(COL_RETAIL)
+    avg_mkt, dev_avg = _L(COL_AVG_MKT), _L(COL_DEV_AVG)
+    msig = _L(COL_MARGIN_SIG)
+
     ws.merge_cells("B2:G2")
     t = ws["B2"]
     t.value = "ЗЕЛЕНОЕ ЯБЛОКО - Dashboard цен и маржи"
@@ -70,7 +90,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.merge_cells("B3:G3")
     s = ws["B3"]
-    s.value = "Основные показатели по всему прайс-листу | Автообновление"
+    s.value = "Основные показатели по всему прайс-листу | Автообновление | Третий релиз"
     s.font = font(size=10, color="595959")
     s.alignment = align("center")
     ws.row_dimensions[3].height = 16
@@ -85,11 +105,11 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     kpis1 = [
         ("Всего позиций", f"=COUNTA({cs}!A3:A10000)", "#,##0", PALETTE.mid_blue),
-        ("Выше рынка", f'=COUNTIF({cs}!E3:E10000,"Выше рынка")', "#,##0", PALETTE.brown),
-        ("Ниже рынка", f'=COUNTIF({cs}!E3:E10000,"Ниже рынка")', "#,##0", PALETTE.dark_green),
-        ("Средняя маржа", f'=IFERROR(AVERAGE(IF({cs}!P3:P{last}<>"",{cs}!P3:P{last})),"")', PCT, PALETTE.dark_blue),
-        ("Средняя наценка", f'=IFERROR(AVERAGE(IF({cs}!O3:O{last}<>"",{cs}!O3:O{last})),"")', PCT, PALETTE.dark_blue),
-        ("С критич.риском", f'=COUNTIF({cs}!S3:S10000,"КРИТИЧНО")', "#,##0", PALETTE.accent_red),
+        ("Выше рынка", f'=COUNTIF({cs}!{sig}3:{sig}10000,"Выше рынка")', "#,##0", PALETTE.brown),
+        ("Ниже рынка", f'=COUNTIF({cs}!{sig}3:{sig}10000,"Ниже рынка")', "#,##0", PALETTE.dark_green),
+        ("Средняя маржа", f'=IFERROR(AVERAGE(IF({cs}!{mrg}3:{mrg}{last}<>"",{cs}!{mrg}3:{mrg}{last})),"")', PCT, PALETTE.dark_blue),
+        ("Средняя наценка", f'=IFERROR(AVERAGE(IF({cs}!{mkup}3:{mkup}{last}<>"",{cs}!{mkup}3:{mkup}{last})),"")', PCT, PALETTE.dark_blue),
+        ("С критич.риском", f'=COUNTIF({cs}!{risk}3:{risk}10000,"КРИТИЧНО")', "#,##0", PALETTE.accent_red),
     ]
     for col_idx, (lbl, frm, nf, bg) in enumerate(kpis1, start=2):
         _kpi(ws, 5, col_idx, lbl, frm, nf, bg)
@@ -97,12 +117,12 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
     ws.row_dimensions[8].height = 8
 
     kpis2 = [
-        ("Ср.ВП/ед (расч.)", f'=IFERROR(AVERAGE(IF({cs}!Q3:Q{last}<>"",{cs}!Q3:Q{last})),"")', NUM2, PALETTE.mid_blue),
-        ("Ср.цена ЗЯ", f'=IFERROR(AVERAGE(IF({cs}!D3:D{last}<>"",{cs}!D3:D{last})),"")', NUM2, PALETTE.mid_blue),
-        ("Ср.цена рынка", f'=IFERROR(AVERAGE(IF({cs}!F3:F{last}<>"",{cs}!F3:F{last})),"")', NUM2, PALETTE.mid_blue),
-        ("Ср.откл.от рынка", f'=IFERROR(AVERAGE(IF({cs}!J3:J{last}<>"",{cs}!J3:J{last})),"")', PCT_SIGNED, PALETTE.dark_blue),
-        ("На уровне рынка", f'=COUNTIF({cs}!E3:E10000,"На уровне")', "#,##0", PALETTE.purple),
-        ("Хор.маржа(>20%)", f'=COUNTIF({cs}!R3:R10000,"Хорошая(>20%)")', "#,##0", PALETTE.dark_green),
+        ("Ср.ВП/ед (расч.)", f'=IFERROR(AVERAGE(IF({cs}!{vp}3:{vp}{last}<>"",{cs}!{vp}3:{vp}{last})),"")', NUM2, PALETTE.mid_blue),
+        ("Ср.цена ЗЯ", f'=IFERROR(AVERAGE(IF({cs}!{retail}3:{retail}{last}<>"",{cs}!{retail}3:{retail}{last})),"")', NUM2, PALETTE.mid_blue),
+        ("Ср.цена рынка", f'=IFERROR(AVERAGE(IF({cs}!{avg_mkt}3:{avg_mkt}{last}<>"",{cs}!{avg_mkt}3:{avg_mkt}{last})),"")', NUM2, PALETTE.mid_blue),
+        ("Ср.откл.от рынка", f'=IFERROR(AVERAGE(IF({cs}!{dev_avg}3:{dev_avg}{last}<>"",{cs}!{dev_avg}3:{dev_avg}{last})),"")', PCT_SIGNED, PALETTE.dark_blue),
+        ("На уровне рынка", f'=COUNTIF({cs}!{sig}3:{sig}10000,"На уровне")', "#,##0", PALETTE.purple),
+        ("Хор.маржа(>20%)", f'=COUNTIF({cs}!{msig}3:{msig}10000,"Хорошая(>20%)")', "#,##0", PALETTE.dark_green),
     ]
     for col_idx, (lbl, frm, nf, bg) in enumerate(kpis2, start=2):
         _kpi(ws, 9, col_idx, lbl, frm, nf, bg)
@@ -123,22 +143,22 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
         row_i = 14 + rk
         ws.row_dimensions[row_i].height = 17
         c = ws.cell(row_i, 2,
-            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH(LARGE(IF({cs}!P$3:P${last}<>"",'
-            f'{cs}!P$3:P${last}),{rk}),{cs}!P$3:P${last},0)),"")')
+            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH(LARGE(IF({cs}!{mrg}$3:{mrg}${last}<>"",'
+            f'{cs}!{mrg}$3:{mrg}${last}),{rk}),{cs}!{mrg}$3:{mrg}${last},0)),"")')
         c.font = font(size=10)
         c.alignment = align("left", indent=1)
         c.border = border_thin()
 
         c = ws.cell(row_i, 3,
-            f'=IFERROR(LARGE(IF({cs}!P$3:P${last}<>"",{cs}!P$3:P${last}),{rk}),"")')
+            f'=IFERROR(LARGE(IF({cs}!{mrg}$3:{mrg}${last}<>"",{cs}!{mrg}$3:{mrg}${last}),{rk}),"")')
         c.font = font(bold=True, size=10)
         c.number_format = PCT
         c.alignment = align("center")
         c.border = border_thin()
 
         c = ws.cell(row_i, 4,
-            f'=IFERROR(INDEX({cs}!Q$3:Q${last},MATCH(LARGE(IF({cs}!P$3:P${last}<>"",'
-            f'{cs}!P$3:P${last}),{rk}),{cs}!P$3:P${last},0)),"")')
+            f'=IFERROR(INDEX({cs}!{vp}$3:{vp}${last},MATCH(LARGE(IF({cs}!{mrg}$3:{mrg}${last}<>"",'
+            f'{cs}!{mrg}$3:{mrg}${last}),{rk}),{cs}!{mrg}$3:{mrg}${last},0)),"")')
         c.font = font(size=10)
         c.number_format = NUM2
         c.alignment = align("right")
@@ -161,22 +181,22 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
     for rk in range(1, top_n + 1):
         row_i = 14 + rk
         c = ws.cell(row_i, 5,
-            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH(LARGE(IF({cs}!J$3:J${last}<>"",'
-            f'{cs}!J$3:J${last}),{rk}),{cs}!J$3:J${last},0)),"")')
+            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",'
+            f'{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),{cs}!{dev_avg}$3:{dev_avg}${last},0)),"")')
         c.font = font(size=10)
         c.alignment = align("left", indent=1)
         c.border = border_thin()
 
         c = ws.cell(row_i, 6,
-            f'=IFERROR(LARGE(IF({cs}!J$3:J${last}<>"",{cs}!J$3:J${last}),{rk}),"")')
+            f'=IFERROR(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),"")')
         c.font = font(bold=True, size=10, color="C00000")
         c.number_format = PCT_SIGNED
         c.alignment = align("center")
         c.border = border_thin()
 
         c = ws.cell(row_i, 7,
-            f'=IFERROR(INDEX({cs}!D$3:D${last},MATCH(LARGE(IF({cs}!J$3:J${last}<>"",'
-            f'{cs}!J$3:J${last}),{rk}),{cs}!J$3:J${last},0)),"")')
+            f'=IFERROR(INDEX({cs}!{retail}$3:{retail}${last},MATCH(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",'
+            f'{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),{cs}!{dev_avg}$3:{dev_avg}${last},0)),"")')
         c.font = font(size=10)
         c.number_format = NUM2
         c.alignment = align("right")

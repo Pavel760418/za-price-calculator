@@ -6,6 +6,11 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.worksheet.worksheet import Worksheet
 
 from za_price_calculator.config import PALETTE, SHEETS
+from za_price_calculator.core.sheet_calculations import (
+    COL_NEW_RETAIL,
+    COL_QTY,
+    S5,
+)
 from za_price_calculator.styling.styles import align, fill, font
 
 
@@ -44,7 +49,11 @@ def build_instructions_sheet(ws: Worksheet) -> None:
     for ci in range(2, 12):
         ws.column_dimensions[get_column_letter(ci)].width = 22
 
-    _title(ws, 2, "\U0001F34F  ЗЕЛЕНОЕ ЯБЛОКО - Калькулятор цен, маржи и сценариев v1.0")
+    qty_L = get_column_letter(COL_QTY)
+    new_retail_L = get_column_letter(COL_NEW_RETAIL)
+    s5_L = get_column_letter(S5[0])
+
+    _title(ws, 2, "\U0001F34F  ЗЕЛЕНОЕ ЯБЛОКО - Калькулятор цен, маржи и сценариев | Третий релиз")
     ws.row_dimensions[3].height = 6
 
     _section(ws, 4, "НАЗНАЧЕНИЕ ФАЙЛА")
@@ -57,7 +66,7 @@ def build_instructions_sheet(ws: Worksheet) -> None:
         f"{SHEETS.sales}          - продажи по штрихкоду (кол-во, выручка, ВП). Опционально.",
         f"{SHEETS.calculations}          - все автоматические формулы. Ручной ввод только в синих ячейках.",
         f"{SHEETS.dashboard}        - KPI-карточки, светофоры, топы. Обновляется автоматически.",
-        f"{SHEETS.scenarios} - сводная таблица по 5 сценариям и автоматические рекомендации.",
+        f"{SHEETS.scenarios} - сводная таблица (видимы С2 и С4; С1/С3/С5 скрыты) и автосигналы.",
     ]
     for j, t in enumerate(lines, start=8):
         _line(ws, j, t)
@@ -65,14 +74,25 @@ def build_instructions_sheet(ws: Worksheet) -> None:
     _section(ws, 14, "ПОЛЯ РУЧНОГО ВВОДА (синий цвет = вводить вручную)")
     input_lines = [
         f"Лист «{SHEETS.sales}»: Штрихкод, Кол-во продаж, Выручка, Валовая прибыль.",
-        "Лист «Расчеты», колонка T (Кол-во продаж) - можно вводить прямо здесь.",
-        "Лист «Расчеты», колонка AS (С4: Новая цена вручную) - произвольная цена для сценария 4.",
-        "Лист «Расчеты», колонка AZ (С5: Целевая маржа) - например 0.25 для целевой маржи 25%.",
+        f"Лист «Расчеты», колонка {qty_L} (Кол-во продаж) - можно вводить прямо здесь.",
+        f"Лист «Расчеты», колонка {new_retail_L} (Новая Розничная цена ЗЯ) - опциональный ручной ввод новой цены.",
+        f"Сценарий С4 автоматически берёт значение из колонки {new_retail_L} (С4:Нов.цена[ВВОД] = ссылка).",
+        f"Лист «Расчеты», колонка {s5_L} (С5: Целевая маржа) - скрыта; например 0.25 для целевой маржи 25%.",
     ]
     for j, t in enumerate(input_lines, start=15):
         _line(ws, j, t)
 
-    _section(ws, 20, "ФОРМУЛЫ - КЛЮЧЕВАЯ ЛОГИКА")
+    _section(ws, 21, "ТРЕТИЙ РЕЛИЗ - НОВЫЕ КОЛОНКИ И СЦЕНАРИИ")
+    release_lines = [
+        "После «Розничная цена ЗЯ»: «Наценка сейчас», «Новая Розничная цена ЗЯ», «Наценка новая».",
+        "Наценка сейчас / Наценка новая = (Цена − Закупочная) / Закупочная (та же база, что в модуле).",
+        "В пользовательском режиме видимы только С2: Медиана рынка и С4: Произв.цена.",
+        "Сценарии С1, С3, С5 сохранены технически (формулы и зависимости), но скрыты от пользователя.",
+    ]
+    for j, t in enumerate(release_lines, start=22):
+        _line(ws, j, t)
+
+    _section(ws, 27, "ФОРМУЛЫ - КЛЮЧЕВАЯ ЛОГИКА")
     formula_lines = [
         "Наценка  = (Розн. цена - Закуп. цена) / Закуп. цена",
         "Маржа    = (Розн. цена - Закуп. цена) / Розн. цена",
@@ -80,10 +100,10 @@ def build_instructions_sheet(ws: Worksheet) -> None:
         "Цена по целевой марже (С5): Цена = Закупочная цена / (1 - Целевая маржа)",
         "Необходимый рост продаж = Текущая суммарная ВП / ВП/ед нового сценария - Текущие продажи",
     ]
-    for j, t in enumerate(formula_lines, start=21):
+    for j, t in enumerate(formula_lines, start=28):
         _line(ws, j, t)
 
-    _section(ws, 27, "ЦВЕТОВЫЕ ОБОЗНАЧЕНИЯ")
+    _section(ws, 34, "ЦВЕТОВЫЕ ОБОЗНАЧЕНИЯ")
     color_lines = [
         ("Синий текст", "Поле ручного ввода - вводить вручную"),
         ("Черный текст", "Формула - не изменять"),
@@ -91,7 +111,7 @@ def build_instructions_sheet(ws: Worksheet) -> None:
         ("Красный фон", "Цена выше рынка / риск потери маржи"),
         ("Желтый фон", "Нейтральная зона / требует внимания"),
     ]
-    for j, (k, v) in enumerate(color_lines, start=28):
+    for j, (k, v) in enumerate(color_lines, start=35):
         ws.merge_cells(f"B{j}:D{j}")
         ws.merge_cells(f"E{j}:K{j}")
         c1 = ws.cell(j, 2, k)
@@ -104,7 +124,7 @@ def build_instructions_sheet(ws: Worksheet) -> None:
         c2.alignment = align("left", indent=1)
         ws.row_dimensions[j].height = 18
 
-    _section(ws, 34, "НАВИГАЦИЯ")
+    _section(ws, 41, "НАВИГАЦИЯ")
     nav_links = [
         (SHEETS.source, f"'{SHEETS.source}'!A1"),
         (SHEETS.sales, f"'{SHEETS.sales}'!A1"),
@@ -112,7 +132,7 @@ def build_instructions_sheet(ws: Worksheet) -> None:
         (SHEETS.dashboard, f"'{SHEETS.dashboard}'!B2"),
         (SHEETS.scenarios, f"'{SHEETS.scenarios}'!B2"),
     ]
-    for j, (label, loc) in enumerate(nav_links, start=35):
+    for j, (label, loc) in enumerate(nav_links, start=42):
         ws.merge_cells(f"B{j}:K{j}")
         c = ws.cell(j, 2, label)
         c.hyperlink = Hyperlink(ref=c.coordinate, location=loc)

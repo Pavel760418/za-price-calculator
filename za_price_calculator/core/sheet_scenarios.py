@@ -2,9 +2,31 @@
 from __future__ import annotations
 
 from openpyxl.formatting.rule import CellIsRule
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from za_price_calculator.config import PALETTE, SHEETS
+from za_price_calculator.core.sheet_calculations import (
+    COL_MARGIN_CUR,
+    COL_MARGIN_SIG,
+    COL_NEW_RETAIL,
+    COL_QTY,
+    COL_RETAIL,
+    COL_RISK,
+    COL_S1_VP,
+    COL_S2_VP,
+    COL_S3_VP,
+    COL_S4_VP,
+    COL_S5_VP,
+    COL_SIGNAL,
+    COL_VP_CUR,
+    COL_VP_SUM,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+)
 from za_price_calculator.styling.styles import (
     HDR_FILL,
     HDR_FONT,
@@ -15,6 +37,14 @@ from za_price_calculator.styling.styles import (
     fill,
     font,
 )
+
+
+def _L(col: int) -> str:
+    return get_column_letter(col)
+
+
+# Строки сценариев: С1/С3/С5 скрыты от пользователя, С2 и С4 видимы.
+_HIDDEN_SCENARIO_ROWS = (7, 9, 11)  # С1, С3, С5
 
 
 def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
@@ -32,16 +62,21 @@ def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.merge_cells("B2:H2")
     t = ws["B2"]
-    t.value = "СЦЕНАРНЫЙ АНАЛИЗ - Сравнение 5 сценариев по всем позициям"
+    t.value = "СЦЕНАРНЫЙ АНАЛИЗ - Сравнение сценариев (видимые: С2, С4) | Третий релиз"
     t.font = font(bold=True, size=14, color=PALETTE.white)
     t.fill = fill(PALETTE.dark_blue)
     t.alignment = align("center")
     ws.row_dimensions[2].height = 32
 
+    qty_L = _L(COL_QTY)
+    new_retail_L = _L(COL_NEW_RETAIL)
     ws.merge_cells("B3:H3")
     s = ws["B3"]
-    s.value = ("Кол-во продаж вводится вручную на листе Расчеты (кол. T) или на листе Продажи. "
-               "При отсутствии - расчёты по ценам активны.")
+    s.value = (
+        f"Кол-во продаж вводится вручную на листе Расчеты (кол. {qty_L}) или на листе Продажи. "
+        f"Новая розничная цена ЗЯ — кол. {new_retail_L}; С4 берёт её автоматически. "
+        "С1/С3/С5 сохранены в файле, но скрыты."
+    )
     s.font = font(size=9, color="595959")
     s.alignment = align("left", indent=1)
     ws.row_dimensions[3].height = 16
@@ -74,24 +109,36 @@ def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
     def avg_if_gt0(col):
         return f'=IFERROR(AVERAGE(IF({cs}!{col}3:{col}{last}>0,{cs}!{col}3:{col}{last})),"")'
 
+    d_col = _L(COL_RETAIL)
+    s_col = _L(COL_MARGIN_CUR)
+    t_col = _L(COL_VP_CUR)
+    v_col = _L(COL_VP_SUM)
+    s1p, s1m, s1v = _L(S1[0]), _L(S1[2]), _L(S1[3])
+    s2p, s2m, s2v = _L(S2[0]), _L(S2[2]), _L(S2[3])
+    s3p, s3m, s3v = _L(S3[0]), _L(S3[2]), _L(S3[3])
+    s4p, s4m, s4v = _L(S4[0]), _L(S4[2]), _L(S4[3])
+    s5p, s5m, s5v = _L(S5[1]), _L(S5[3]), _L(S5[4])
+    s1vp_sum, s2vp_sum = _L(COL_S1_VP), _L(COL_S2_VP)
+    s3vp_sum, s4vp_sum, s5vp_sum = _L(COL_S3_VP), _L(COL_S4_VP), _L(COL_S5_VP)
+
     scen_rows = [
         (6, "Текущая", "Действующая цена ЗЯ",
-         avg_if("D"), avg_if("P"), avg_if("Q"), f"=SUM({cs}!V3:V{last})",
+         avg_if(d_col), avg_if(s_col), avg_if(t_col), f"=SUM({cs}!{v_col}3:{v_col}{last})",
          "Базовый уровень", fill(PALETTE.grey_bg)),
         (7, "С1: Средняя рынка", "Цена = средняя по конкурентам",
-         avg_if("X"), avg_if("Z"), avg_if("AA"), f"=SUM({cs}!BI3:BI{last})",
+         avg_if(s1p), avg_if(s1m), avg_if(s1v), f"=SUM({cs}!{s1vp_sum}3:{s1vp_sum}{last})",
          "Выравнивание по рынку", fill("EBF3FB")),
         (8, "С2: Медиана рынка", "Цена = медианная по конкурентам",
-         avg_if("AE"), avg_if("AG"), avg_if("AH"), f"=SUM({cs}!BK3:BK{last})",
+         avg_if(s2p), avg_if(s2m), avg_if(s2v), f"=SUM({cs}!{s2vp_sum}3:{s2vp_sum}{last})",
          "Устойчив к выбросам", fill("EBF3FB")),
         (9, "С3: Мин.конкурент", "Цена = минимальный конкурент",
-         avg_if("AL"), avg_if("AN"), avg_if("AO"), f"=SUM({cs}!BM3:BM{last})",
+         avg_if(s3p), avg_if(s3m), avg_if(s3v), f"=SUM({cs}!{s3vp_sum}3:{s3vp_sum}{last})",
          "Риск потери маржи", fill(PALETTE.red_bg)),
-        (10, "С4: Произв.цена", "Пользовательская цена (кол.AS в Расчетах)",
-         avg_if_gt0("AS"), avg_if("AU"), avg_if("AV"), f"=SUM({cs}!BO3:BO{last})",
+        (10, "С4: Произв.цена", f"Цена из «Новая Розничная цена ЗЯ» (кол.{new_retail_L})",
+         avg_if_gt0(s4p), avg_if(s4m), avg_if(s4v), f"=SUM({cs}!{s4vp_sum}3:{s4vp_sum}{last})",
          "Пользовательский сценарий", fill("F0E6FF")),
-        (11, "С5: Целевая маржа", "Цена по целевой марже (кол.AZ в Расчетах)",
-         avg_if("BA"), avg_if("BC"), avg_if("BD"), f"=SUM({cs}!BQ3:BQ{last})",
+        (11, "С5: Целевая маржа", f"Цена по целевой марже (кол.{_L(S5[0])} в Расчетах)",
+         avg_if(s5p), avg_if(s5m), avg_if(s5v), f"=SUM({cs}!{s5vp_sum}3:{s5vp_sum}{last})",
          "Маржинальный сценарий", fill(PALETTE.green_bg)),
     ]
     for (row, lbl, desc, f_price, f_mrg, f_vp, f_sum, note, rfill) in scen_rows:
@@ -109,6 +156,9 @@ def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
             elif ci in (6, 7):
                 c.number_format = NUM2
 
+    for row in _HIDDEN_SCENARIO_ROWS:
+        ws.row_dimensions[row].hidden = True
+
     ws.row_dimensions[13].height = 8
     ws.merge_cells("B14:H14")
     c = ws["B14"]
@@ -118,18 +168,19 @@ def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
     c.alignment = align("center")
     ws.row_dimensions[14].height = 22
 
+    sig, risk, msig = _L(COL_SIGNAL), _L(COL_RISK), _L(COL_MARGIN_SIG)
     signals = [
-        ("Позиций с ценой ВЫШЕ рынка", f'=COUNTIF({cs}!E3:E10000,"Выше рынка")',
-         "Рассмотреть снижение цены до С1 или С2"),
-        ("Позиций с ценой НИЖЕ рынка", f'=COUNTIF({cs}!E3:E10000,"Ниже рынка")',
+        ("Позиций с ценой ВЫШЕ рынка", f'=COUNTIF({cs}!{sig}3:{sig}10000,"Выше рынка")',
+         "Рассмотреть снижение цены до С2 (медиана рынка)"),
+        ("Позиций с ценой НИЖЕ рынка", f'=COUNTIF({cs}!{sig}3:{sig}10000,"Ниже рынка")',
          "Потенциал повышения цены без потери конкурентоспособности"),
-        ("Позиций с КРИТИЧНЫМ риском ВП (С3)", f'=COUNTIF({cs}!S3:S10000,"КРИТИЧНО")',
+        ("Позиций с КРИТИЧНЫМ риском ВП (С3)", f'=COUNTIF({cs}!{risk}3:{risk}10000,"КРИТИЧНО")',
          "Снижение до мин.конкурента даёт маржу <5% - опасно"),
-        ("Позиций с УМЕРЕННЫМ риском (С3)", f'=COUNTIF({cs}!S3:S10000,"УМЕРЕННЫЙ")',
+        ("Позиций с УМЕРЕННЫМ риском (С3)", f'=COUNTIF({cs}!{risk}3:{risk}10000,"УМЕРЕННЫЙ")',
          "Требует мониторинга при изменении цены"),
-        ("Позиций с ХОРОШЕЙ маржой (>20%)", f'=COUNTIF({cs}!R3:R10000,"Хорошая(>20%)")',
+        ("Позиций с ХОРОШЕЙ маржой (>20%)", f'=COUNTIF({cs}!{msig}3:{msig}10000,"Хорошая(>20%)")',
          "Высокая ценовая гибкость"),
-        ("Позиций с НИЗКОЙ маржой (<10%)", f'=COUNTIF({cs}!R3:R10000,"Низкая(<10%)")',
+        ("Позиций с НИЗКОЙ маржой (<10%)", f'=COUNTIF({cs}!{msig}3:{msig}10000,"Низкая(<10%)")',
          "Приоритет: переговоры с поставщиком / ценовая корректировка"),
     ]
     for j, (lbl, frm, rec) in enumerate(signals):
