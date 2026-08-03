@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
+from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -25,6 +25,8 @@ INPUT_FONT = font(size=10, color=PALETTE.input_text)
 FORMULA_FONT = font(size=10, color=PALETTE.formula_text)
 XREF_FONT = font(size=10, color=PALETTE.xref_text)
 INPUT_FILL = fill(PALETTE.input_blue_bg)
+YELLOW_FILL = fill(PALETTE.yellow_bg)
+GREEN_FILL = fill(PALETTE.green_bg)
 
 # Индексы колонок (1-based). После «Розничная цена ЗЯ» добавлены 3 колонки (+3 сдвиг).
 COL_NAME = 1
@@ -91,7 +93,7 @@ COLUMN_DEFS: list[tuple[int, str, int, str, bool]] = [
     (3, "Закупочная цена", 14, NUM2, False),
     (4, "Розничная цена ЗЯ", 14, NUM2, False),
     (5, "Наценка сейчас", 13, PCT, False),
-    (6, "Новая розничная цена ЗЯ", 16, NUM2, True),
+    (6, "Новая Розничная цена ЗЯ", 16, NUM2, True),
     (7, "Наценка новая", 13, PCT, False),
     (8, "Сигнал цены", 16, "@", False),
     (9, "Ср.цена рынка", 14, NUM2, False),
@@ -172,7 +174,8 @@ def _L(col: int) -> str:
     return get_column_letter(col)
 
 
-def _write(ws: Worksheet, row: int, col: int, formula, num_fmt: str, is_input: bool = False) -> None:
+def _write(ws: Worksheet, row: int, col: int, formula, num_fmt: str, is_input: bool = False,
+           cell_fill=None) -> None:
     cell = ws.cell(row, col, formula)
     cell.border = border_thin()
     cell.number_format = num_fmt
@@ -182,7 +185,10 @@ def _write(ws: Worksheet, row: int, col: int, formula, num_fmt: str, is_input: b
         cell.alignment = align("center")
     else:
         cell.alignment = align("right")
-    if is_input:
+    if cell_fill is not None:
+        cell.fill = cell_fill
+        cell.font = INPUT_FONT if is_input else FORMULA_FONT
+    elif is_input:
         cell.font = INPUT_FONT
         cell.fill = INPUT_FILL
     elif col in _XREF_COLS:
@@ -223,8 +229,17 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
 
     for (ci, header, width, num_fmt, is_input) in COLUMN_DEFS:
         cell = ws.cell(2, ci, header)
-        cell.fill = fill(col_grp_fill.get(ci, PALETTE.dark_blue))
-        cell.font = font(bold=True, size=9, color=PALETTE.white)
+        if ci == COL_MARKUP_NOW:
+            hdr_color = PALETTE.yellow_bg
+            hdr_font_color = "000000"
+        elif ci in (COL_NEW_RETAIL, COL_MARKUP_NEW):
+            hdr_color = PALETTE.green_bg
+            hdr_font_color = "000000"
+        else:
+            hdr_color = col_grp_fill.get(ci, PALETTE.dark_blue)
+            hdr_font_color = PALETTE.white
+        cell.fill = fill(hdr_color)
+        cell.font = font(bold=True, size=9, color=hdr_font_color)
         cell.alignment = align("center", wrap=True)
         cell.border = border_thin()
         ws.column_dimensions[_L(ci)].width = width
@@ -253,14 +268,16 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         _write(ws, r, COL_PURCHASE, f"={src}!C{sr}", NUM2)
         _write(ws, r, COL_RETAIL, f"={src}!D{sr}", NUM2)
 
-        # Наценка сейчас = (Розн. ЗЯ − Закуп.) / Закуп. — та же база, что у «Наценка тек.%»
+        # Наценка сейчас = (Розн. ЗЯ − Закуп.) / Закуп. — жёлтая заливка (релиз 3.5)
         _write(ws, r, COL_MARKUP_NOW,
-               f'=IF(AND({C}{r}>0,{D}{r}>0),({D}{r}-{C}{r})/{C}{r},"")', PCT)
-        # Новая розничная цена ЗЯ — ручной ввод [ВВОД]; С4 ссылается на эту колонку
-        _write(ws, r, COL_NEW_RETAIL, None, NUM2, is_input=True)
-        # Наценка новая = (Новая розн. − Закуп.) / Закуп.
+               f'=IF(AND({C}{r}>0,{D}{r}>0),({D}{r}-{C}{r})/{C}{r},"")', PCT,
+               cell_fill=YELLOW_FILL)
+        # Новая Розничная цена ЗЯ — ручной ввод [ВВОД], зелёная заливка; С4 ссылается сюда
+        _write(ws, r, COL_NEW_RETAIL, None, NUM2, is_input=True, cell_fill=GREEN_FILL)
+        # Наценка новая = (Новая розн. − Закуп.) / Закуп. — зелёная заливка
         _write(ws, r, COL_MARKUP_NEW,
-               f'=IF(AND({C}{r}>0,{F}{r}>0),({F}{r}-{C}{r})/{C}{r},"")', PCT)
+               f'=IF(AND({C}{r}>0,{F}{r}>0),({F}{r}-{C}{r})/{C}{r},"")', PCT,
+               cell_fill=GREEN_FILL)
 
         _write(ws, r, COL_SIGNAL,
                f'=IF(OR({D}{r}="",{I}{r}=""),"-",'
@@ -268,6 +285,7 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
                f'IF({D}{r}<{I}{r}*0.95,"Ниже рынка","На уровне")))', "@")
 
         comp = ",".join(f"{src}!{_L(ci)}{sr}" for ci in range(5, 12))
+        comp_range = f"{src}!E{sr}:K{sr}"
         _write(ws, r, COL_AVG_MKT, f'=IFERROR(AVERAGE({comp}),"")', NUM2)
         _write(ws, r, COL_MED_MKT, f'=IFERROR(MEDIAN({comp}),"")', NUM2)
         _write(ws, r, COL_MIN_MKT, f'=IFERROR(MIN({comp}),"")', NUM2)
@@ -276,9 +294,15 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         for ci, ref in ((COL_DEV_AVG, I), (COL_DEV_MED, J), (COL_DEV_MIN, K)):
             _write(ws, r, ci, f'=IF(AND({D}{r}<>"",{ref}{r}<>""),({D}{r}-{ref}{r})/{ref}{r},"")', PCT)
 
-        _write(ws, r, COL_RANK, f'=IFERROR(RANK({D}{r},({comp})),"")', "0")
+        # Рейтинг среди цен конкурентов по строке исходных данных (устойчивый диапазон E:K)
+        _write(
+            ws, r, COL_RANK,
+            f'=IF(OR({D}{r}="",COUNTA({comp_range})=0),"",'
+            f'IFERROR(RANK({D}{r},{comp_range}),""))',
+            "0",
+        )
         _write(ws, r, COL_POS,
-               f'=IF({P}{r}="","-",IF({P}{r}=1,"Дороже всех",'
+               f'=IF(OR({P}{r}="",{P}{r}=0),"-",IF({P}{r}=1,"Дороже всех",'
                f'IF({P}{r}=2,"2-й по цене",IF({P}{r}<=4,"Средний","Ниже конкурентов"))))', "@")
 
         _write(ws, r, COL_MARKUP_CUR, f'=IF(AND({C}{r}>0,{D}{r}>0),({D}{r}-{C}{r})/{C}{r},"")', PCT)
@@ -385,5 +409,34 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         f"{T}3:{T}{last_data_row}",
         DataBarRule(start_type="min", end_type="max", color="4472C4"),
     )
+
+    # Светофор: Сигнал маржи и Риск потери ВП
+    msig_L, risk_L = _L(COL_MARGIN_SIG), _L(COL_RISK)
+    msig_rng = f"{msig_L}3:{msig_L}{last_data_row}"
+    risk_rng = f"{risk_L}3:{risk_L}{last_data_row}"
+    for text, color in (
+        ("Низкая", PALETTE.red_bg),
+        ("Средняя", PALETTE.yellow_bg),
+        ("Хорошая", PALETTE.green_bg),
+    ):
+        ws.conditional_formatting.add(
+            msig_rng,
+            FormulaRule(
+                formula=[f'ISNUMBER(SEARCH("{text}",{msig_L}3))'],
+                fill=fill(color),
+            ),
+        )
+    for text, color in (
+        ("КРИТИЧНО", PALETTE.red_bg),
+        ("УМЕРЕННЫЙ", PALETTE.yellow_bg),
+        ("НИЗКИЙ", PALETTE.green_bg),
+    ):
+        ws.conditional_formatting.add(
+            risk_rng,
+            FormulaRule(
+                formula=[f'{risk_L}3="{text}"'],
+                fill=fill(color),
+            ),
+        )
 
     _hide_scenario_columns(ws)
