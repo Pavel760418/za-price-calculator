@@ -91,7 +91,7 @@ COLUMN_DEFS: list[tuple[int, str, int, str, bool]] = [
     (3, "Закупочная цена", 14, NUM2, False),
     (4, "Розничная цена ЗЯ", 14, NUM2, False),
     (5, "Наценка сейчас", 13, PCT, False),
-    (6, "Новая Розничная цена ЗЯ", 16, NUM2, True),
+    (6, "Новая розничная цена ЗЯ", 16, NUM2, True),
     (7, "Наценка новая", 13, PCT, False),
     (8, "Сигнал цены", 16, "@", False),
     (9, "Ср.цена рынка", 14, NUM2, False),
@@ -108,7 +108,7 @@ COLUMN_DEFS: list[tuple[int, str, int, str, bool]] = [
     (20, "ВП/ед тек.", 13, NUM2, False),
     (21, "Сигнал маржи", 14, "@", False),
     (22, "Риск потери ВП", 14, "@", False),
-    (23, "Кол-во продаж", 14, NUM0, True),
+    (23, "Кол-во продаж", 14, NUM0, False),
     (24, "Выручка тек.", 14, NUM2, False),
     (25, "ВП тек.суммарная", 14, NUM2, False),
     (26, "Маржа тек.общая%", 14, PCT, False),
@@ -231,11 +231,13 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
     ws.row_dimensions[2].height = 36
 
     src = f"'{SHEETS.source}'"
+    sales = f"'{SHEETS.sales}'"
 
     if n_rows == 0:
         _hide_scenario_columns(ws)
         return
 
+    B = _L(COL_BARCODE)
     C, D, F = _L(COL_PURCHASE), _L(COL_RETAIL), _L(COL_NEW_RETAIL)
     I, J, K = _L(COL_AVG_MKT), _L(COL_MED_MKT), _L(COL_MIN_MKT)
     P = _L(COL_RANK)
@@ -254,7 +256,7 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         # Наценка сейчас = (Розн. ЗЯ − Закуп.) / Закуп. — та же база, что у «Наценка тек.%»
         _write(ws, r, COL_MARKUP_NOW,
                f'=IF(AND({C}{r}>0,{D}{r}>0),({D}{r}-{C}{r})/{C}{r},"")', PCT)
-        # Новая Розничная цена ЗЯ — ручной ввод [ВВОД]
+        # Новая розничная цена ЗЯ — ручной ввод [ВВОД]; С4 ссылается на эту колонку
         _write(ws, r, COL_NEW_RETAIL, None, NUM2, is_input=True)
         # Наценка новая = (Новая розн. − Закуп.) / Закуп.
         _write(ws, r, COL_MARKUP_NEW,
@@ -290,7 +292,12 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
                f'=IF(OR({K}{r}="",{C}{r}=""),"-",IF(({K}{r}-{C}{r})/{K}{r}<0.05,"КРИТИЧНО",'
                f'IF(({K}{r}-{C}{r})/{K}{r}<0.15,"УМЕРЕННЫЙ","НИЗКИЙ")))', "@")
 
-        _write(ws, r, COL_QTY, None, NUM0, is_input=True)
+        # Кол-во продаж подтягивается с листа «Продажи» по штрихкоду (при загрузке файла продаж).
+        _write(
+            ws, r, COL_QTY,
+            f'=IFERROR(VLOOKUP({B}{r},{sales}!A:B,2,FALSE),"")',
+            NUM0,
+        )
         _write(ws, r, COL_REV, f'=IF({W}{r}>0,{W}{r}*{D}{r},"")', NUM2)
         _write(ws, r, COL_VP_SUM, f'=IF({W}{r}>0,{W}{r}*{T}{r},"")', NUM2)
         _write(ws, r, COL_MARGIN_TOT, f'=IF({X}{r}>0,{Y}{r}/{X}{r},"")', PCT)
@@ -313,7 +320,7 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         scenario_block(*S2, f'=IF({J}{r}<>"",{J}{r},"")')
         scenario_block(*S3, f'=IF({K}{r}<>"",{K}{r},"")')
 
-        # С4:Нов.цена[ВВОД] ← «Новая Розничная цена ЗЯ» (формула-ссылка)
+        # С4:Нов.цена[ВВОД] ← «Новая розничная цена ЗЯ» (формула-ссылка)
         _write(ws, r, S4[0], f'=IF({F}{r}<>"",{F}{r},"")', NUM2)
         scenario_block(S4[0], S4[1], S4[2], S4[3], S4[4], S4[5], S4[6], None)
 

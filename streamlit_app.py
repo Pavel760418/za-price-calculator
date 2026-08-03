@@ -33,7 +33,7 @@ from openpyxl.utils import get_column_letter
 
 from za_price_calculator.config import COMPETITOR_COLUMNS, THRESHOLDS
 from za_price_calculator.exceptions import ZAPriceCalculatorError
-from za_price_calculator.io_handlers.loader import load_source_file
+from za_price_calculator.io_handlers.loader import load_sales_file, load_source_file
 from za_price_calculator.service import ZAPriceCalculator
 
 logging.basicConfig(
@@ -59,7 +59,7 @@ COMPETITOR_LABELS = {
     "Цена_Оптовик_Редукторный": "Оптовик (Редукторный)",
 }
 
-APP_VERSION = "2026-07-29.3"
+APP_VERSION = "2026-08-03.4"
 RELEASE_LABEL = "Третий релиз"
 
 GREEN = "#1a7f37"
@@ -174,19 +174,20 @@ st.caption(
 with st.expander("ℹ️ Что нового в третьем релизе", expanded=False):
     st.markdown(
         """
-На листе **Расчеты** после «Розничная цена ЗЯ» добавлены колонки:
+На листе **Расчеты**, в блоке **«ЦЕНЫ ЗЯ / СИГНАЛ»** после «Розничная цена ЗЯ» добавлены колонки:
 
 - **Наценка сейчас** — текущая наценка от закупочной цены  
-- **Новая Розничная цена ЗЯ** — опциональный ручной ввод новой розничной цены  
+- **Новая розничная цена ЗЯ** — опциональный ручной ввод новой розничной цены  
 - **Наценка новая** — наценка от введённой новой цены  
 
 В пользовательском режиме видимы только сценарии:
 
 - **С2: Медиана рынка**  
-- **С4: Произв.цена** (берёт значение из «Новая Розничная цена ЗЯ»)  
+- **С4: Произв.цена** (столбец «С4:Нов.цена[ВВОД]» заполняется из «Новая розничная цена ЗЯ»)  
 
-Сценарии С1, С3, С5 сохранены технически (формулы и зависимости), но скрыты.
+Сценарии С1, С3, С5 скрыты везде для пользователя.
 В «Анализ рынка» столбец **Откл. от медианы** подсвечивается так же, как **Откл. от средней**.
+При загрузке файла продаж колонка **Кол-во продаж** на листе «Расчеты» подтягивается по штрихкоду.
         """
     )
 
@@ -203,6 +204,16 @@ def _load_source_df(file_bytes: bytes, file_name: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def _load_sales_df(file_bytes: bytes, file_name: str) -> pd.DataFrame:
+    """Загружает и нормализует файл продаж во временном файле."""
+    suffix = Path(file_name).suffix or ".xlsx"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+        tmp.write(file_bytes)
+        tmp.flush()
+        return load_sales_file(tmp.name)
+
+
+@st.cache_data(show_spinner=False)
 def _build_excel(
     source_bytes: bytes, source_name: str,
     sales_bytes: bytes | None, sales_name: str | None,
@@ -213,7 +224,7 @@ def _build_excel(
         src = tmp_dir / (Path(source_name).stem + (Path(source_name).suffix or ".xlsx"))
         src.write_bytes(source_bytes)
         sales = None
-        if sales_bytes is not None:
+        if sales_bytes is not None and sales_name:
             sales = tmp_dir / (Path(sales_name).stem + (Path(sales_name).suffix or ".xlsx"))
             sales.write_bytes(sales_bytes)
         out = tmp_dir / "Зеленое_Яблоко_калькулятор.xlsx"
@@ -224,6 +235,29 @@ def _build_excel(
         )
         return out.read_bytes()
 
+
+def _merge_sales(metrics: pd.DataFrame, sales_df: pd.DataFrame | None) -> pd.DataFrame:
+    """Добавляет к метрикам кол-во продаж / выручку / ВП из файла продаж по штрихкоду."""
+    d = metrics.copy()
+    if sales_df is None or sales_df.empty:
+        d["Кол-во_продаж"] = pd.NA
+        d["Выручка_продаж"] = pd.NA
+        d["ВП_продаж"] = pd.NA
+        d["Есть_продажи"] = False
+        return d
+
+    sales = sales_df.copy()
+    sales["Штрихкод"] = sales["Штрихкод"].astype(str)
+    # При дубликатах штрихкода суммируем продажи
+    agg = (
+        sales.groupby("Штрихкод", as_index=False)
+        .agg({"Кол-во_продаж": "sum", "Выручка": "sum", "Валовая_прибыль": "sum"})
+        .rename(columns={"Выручка": "Выручка_продаж", "Валовая_прибыль": "ВП_продаж"})
+    )
+    d["Штрихкод"] = d["Штрихкод"].astype(str)
+    d = d.merge(agg, on="Штрихкод", how="left")
+    d["Есть_продажи"] = d["Кол-во_продаж"].notna() & (d["Кол-во_продаж"] > 0)
+    return d
 
 def _compute_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """Считает наценку, маржу, отклонение от рынка и сигналы по методике модуля."""
@@ -302,7 +336,7 @@ def _scenarios(d: pd.DataFrame) -> pd.DataFrame:
             "Вывод": note,
         }
 
-    # С4 в Excel заполняется вручную через «Новая Розничная цена ЗЯ»;
+    # С4 в Excel заполняется вручную через «Новая розничная цена ЗЯ»;
     # в веб-превью показываем строку-пояснение без расчётной цены.
     rows = [
         block("Текущая", v["Розничная_цена_ЗЯ"], "Базовый уровень"),
@@ -312,7 +346,7 @@ def _scenarios(d: pd.DataFrame) -> pd.DataFrame:
             "Цена": float("nan"),
             "Маржа": float("nan"),
             "ВП_ед": float("nan"),
-            "Вывод": "Ввод в Excel: «Новая Розничная цена ЗЯ» → С4",
+            "Вывод": "Ввод в Excel: «Новая розничная цена ЗЯ» → С4",
         },
     ]
     return pd.DataFrame(rows)
@@ -355,8 +389,9 @@ with st.sidebar:
     )
     st.caption(
         f"**{RELEASE_LABEL}.** Файл продаж — блок «Файл продаж»; обязателен **Штрихкод**. "
-        "В Excel после «Розничная цена ЗЯ»: Наценка сейчас / Новая Розничная цена ЗЯ / "
-        "Наценка новая. Видимые сценарии: **С2** и **С4**."
+        "В Excel в блоке «ЦЕНЫ ЗЯ / СИГНАЛ»: Наценка сейчас / Новая розничная цена ЗЯ / "
+        "Наценка новая. Видимые сценарии: **С2** и **С4**. "
+        "Продажи на листе «Расчеты» подтягиваются по штрихкоду."
     )
 
 if source_upload is None:
@@ -392,7 +427,11 @@ try:
         source_bytes = source_upload.getvalue()
         sales_bytes = sales_upload.getvalue() if sales_upload else None
         df = _load_source_df(source_bytes, source_upload.name)
-        metrics = _compute_metrics(df)
+        sales_df = (
+            _load_sales_df(sales_bytes, sales_upload.name)
+            if sales_upload is not None else None
+        )
+        metrics = _merge_sales(_compute_metrics(df), sales_df)
         scen = _scenarios(metrics)
         excel_bytes = _build_excel(
             source_bytes, source_upload.name, sales_bytes,
@@ -409,13 +448,21 @@ except Exception as exc:  # noqa: BLE001
 valid = metrics[metrics["Валидна"]]
 n_all = len(metrics)
 n_valid = len(valid)
+n_sales_matched = int(metrics["Есть_продажи"].sum()) if "Есть_продажи" in metrics.columns else 0
+n_sales_rows = len(sales_df) if sales_df is not None else 0
 
 # --- Верхняя строка: статус + скачивание ---
 c1, c2 = st.columns([3, 1])
 with c1:
+    sales_note = ""
+    if sales_df is not None:
+        sales_note = (
+            f" Файл продаж: **{n_sales_rows}** строк, "
+            f"сопоставлено с прайсом: **{n_sales_matched}**."
+        )
     st.success(
-        f"Готово! Обработано позиций: **{n_all}**, с полной экономикой: **{n_valid}**. "
-        "Итоговый Excel-файл сформирован."
+        f"Готово! Обработано позиций: **{n_all}**, с полной экономикой: **{n_valid}**."
+        f"{sales_note} Итоговый Excel-файл сформирован."
     )
 with c2:
     st.download_button(
@@ -454,7 +501,7 @@ with tab_dash:
     k2[1].metric("Выше рынка", f"{n_above}", delta=f"{n_above / n_all * 100:.0f}%" if n_all else None,
                  delta_color="inverse")
     k2[2].metric("Ниже рынка", f"{n_below}", delta=f"{n_below / n_all * 100:.0f}%" if n_all else None)
-    k2[3].metric("Критический риск (С3)", f"{n_crit}", delta_color="inverse")
+    k2[3].metric("Критический риск маржи", f"{n_crit}", delta_color="inverse")
 
     st.divider()
     g1, g2 = st.columns(2)
@@ -516,7 +563,7 @@ with tab_dash:
                 "bad",
                 f"<b>{n_above}</b> позиций ({share_above:.0f}%) стоят <b>выше рынка</b>. "
                 "Рекомендуется рассмотреть сценарий <b>С2 (медиана рынка)</b> "
-                "или задать новую розничную цену в колонке «Новая Розничная цена ЗЯ» (С4).",
+                "или задать новую розничную цену в колонке «Новая розничная цена ЗЯ» (С4).",
             )
         if n_below:
             _insight(
@@ -548,9 +595,9 @@ with tab_dash:
 with tab_scen:
     st.markdown("#### Сравнение сценариев ценообразования")
     st.caption(
-        "В третьем релизе для пользователя видимы **С2: Медиана рынка** и "
-        "**С4: Произв.цена**. Остальные сценарии сохранены в Excel, но скрыты. "
-        "С4 заполняется вручную в колонке «Новая Розничная цена ЗЯ»."
+        "Для пользователя видимы **С2: Медиана рынка** и "
+        "**С4: Произв.цена**. Сценарии С1, С3, С5 скрыты. "
+        "С4 заполняется вручную в колонке «Новая розничная цена ЗЯ»."
     )
 
     show = pd.DataFrame({
@@ -596,11 +643,37 @@ with tab_scen:
         "info",
         f"Текущая средняя маржа <b>{_fmt_pct(base_m)}</b>. При выравнивании до медианы рынка (С2) "
         f"она составит <b>{_fmt_pct(c2_m)}</b>. Сценарий С4 задаётся вручную через колонку "
-        f"«Новая Розничная цена ЗЯ» в Excel — наценка новая пересчитается автоматически.",
+        f"«Новая розничная цена ЗЯ» в Excel — наценка новая пересчитается автоматически.",
     )
 
 # =============================== Вкладка: Данные ============================
 with tab_data:
+    if sales_df is not None:
+        st.markdown("#### Продажи (сопоставление по штрихкоду)")
+        st.caption(
+            f"Загружено строк продаж: **{n_sales_rows}**, "
+            f"совпало с прайсом: **{n_sales_matched}**. "
+            "В Excel колонка «Кол-во продаж» на листе «Расчеты» заполняется через VLOOKUP."
+        )
+        sold = metrics[metrics["Есть_продажи"]].copy()
+        if len(sold):
+            sales_view = pd.DataFrame({
+                "Наименование": sold["Наименование"].values,
+                "Штрихкод": sold["Штрихкод"].values,
+                "Кол-во продаж": sold["Кол-во_продаж"].apply(
+                    lambda x: "—" if pd.isna(x) else f"{int(x):,}".replace(",", " ")
+                ).values,
+                "Выручка (файл)": sold["Выручка_продаж"].apply(_fmt_num).values,
+                "ВП (файл)": sold["ВП_продаж"].apply(_fmt_num).values,
+            })
+            st.dataframe(sales_view, width="stretch", hide_index=True)
+        else:
+            st.warning(
+                "Файл продаж загружен, но ни один штрихкод не совпал с прайсом. "
+                "Проверьте колонку «Штрихкод»."
+            )
+        st.divider()
+
     st.markdown("#### Топ-10 позиций по текущей марже")
     tm = valid.nlargest(10, "Маржа")
     top_margin = pd.DataFrame({
@@ -629,9 +702,10 @@ with tab_data:
     st.markdown("#### Итоговый Excel-файл")
     st.write(
         f"**{RELEASE_LABEL}.** Полная книга содержит 6 листов: Инструкция, Исходные данные, "
-        "Продажи, Расчеты, Dashboard, Сценарный анализ. На «Расчеты» после "
-        "«Розничная цена ЗЯ» — колонки «Наценка сейчас», «Новая Розничная цена ЗЯ», "
-        "«Наценка новая». Видимы сценарии С2 и С4; С4 ссылается на новую розничную цену."
+        "Продажи, Расчеты, Dashboard, Сценарный анализ. В блоке «ЦЕНЫ ЗЯ / СИГНАЛ» — "
+        "колонки «Наценка сейчас», «Новая розничная цена ЗЯ», «Наценка новая». "
+        "Видимы сценарии С2 и С4; С4:Нов.цена[ВВОД] = «Новая розничная цена ЗЯ». "
+        "При загрузке продаж колонка «Кол-во продаж» на «Расчеты» заполняется по штрихкоду."
     )
     st.download_button(
         "⬇️ Скачать итоговый Excel (.xlsx)",
