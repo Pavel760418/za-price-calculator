@@ -9,6 +9,7 @@ from za_price_calculator.config import PALETTE, SHEETS
 from za_price_calculator.core.sheet_calculations import (
     COL_AVG_MKT,
     COL_DEV_AVG,
+    COL_DEV_MED,
     COL_MARGIN_CUR,
     COL_MARGIN_SIG,
     COL_MARKUP_CUR,
@@ -59,6 +60,92 @@ def _section(ws, row, c1, c2, title, hexcolor=PALETTE.dark_blue):
     ws.row_dimensions[row].height = 22
 
 
+def _top10_block(
+    ws: Worksheet,
+    *,
+    section_row: int,
+    header_row: int,
+    c1: int,
+    title: str,
+    title_color: str,
+    headers: list[str],
+    header_color: str,
+    cs: str,
+    last: int,
+    top_n: int,
+    metric_col: str,
+    retail_col: str,
+    extreme: str,
+) -> None:
+    """
+    Блок ТОП-10 по метрике отклонения.
+
+    :param extreme: "LARGE" (выше рынка) или "SMALL" (ниже рынка).
+    """
+    c2, c3 = c1 + 1, c1 + 2
+    _section(ws, section_row, c1, c3, title, title_color)
+    for ci, h in enumerate(headers, start=c1):
+        c = ws.cell(header_row, ci, h)
+        c.fill = fill(header_color)
+        c.font = font(bold=True, size=10, color=PALETTE.white)
+        c.alignment = HDR_ALIGN
+        c.border = border_thin()
+    ws.row_dimensions[header_row].height = 18
+
+    for rk in range(1, top_n + 1):
+        row_i = header_row + rk
+        ws.row_dimensions[row_i].height = 17
+        filt = (
+            f'IF({cs}!{metric_col}${3}:{metric_col}${last}<>"",'
+            f'{cs}!{metric_col}${3}:{metric_col}${last})'
+        )
+        ext = f"{extreme}({filt},{rk})"
+
+        c = ws.cell(
+            row_i, c1,
+            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH({ext},{cs}!{metric_col}$3:{metric_col}${last},0)),"")',
+        )
+        c.font = font(size=10)
+        c.alignment = align("left", indent=1)
+        c.border = border_thin()
+
+        c = ws.cell(row_i, c2, f'=IFERROR({ext},"")')
+        c.font = font(bold=True, size=10, color="C00000" if extreme == "LARGE" else "375623")
+        c.number_format = PCT_SIGNED
+        c.alignment = align("center")
+        c.border = border_thin()
+
+        c = ws.cell(
+            row_i, c3,
+            f'=IFERROR(INDEX({cs}!{retail_col}$3:{retail_col}${last},'
+            f'MATCH({ext},{cs}!{metric_col}$3:{metric_col}${last},0)),"")',
+        )
+        c.font = font(size=10)
+        c.number_format = NUM2
+        c.alignment = align("right")
+        c.border = border_thin()
+
+    if top_n > 0:
+        end_row = header_row + top_n
+        letter = get_column_letter(c2)
+        if extreme == "LARGE":
+            ws.conditional_formatting.add(
+                f"{letter}{header_row + 1}:{letter}{end_row}",
+                ColorScaleRule(
+                    start_type="min", start_color="FFEB84",
+                    end_type="max", end_color="F8696B",
+                ),
+            )
+        else:
+            ws.conditional_formatting.add(
+                f"{letter}{header_row + 1}:{letter}{end_row}",
+                ColorScaleRule(
+                    start_type="min", start_color="63BE7B",
+                    end_type="max", end_color="FFEB84",
+                ),
+            )
+
+
 def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
     """
     Строит лист 'Dashboard' с KPI-карточками и топ-10 списками.
@@ -69,7 +156,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = PALETTE.accent_green
 
-    for col, w in (("A", 3), ("B", 22), ("C", 22), ("D", 22), ("E", 22), ("F", 22), ("G", 22), ("H", 3)):
+    for col, w in (("A", 3), ("B", 28), ("C", 12), ("D", 12), ("E", 28), ("F", 12), ("G", 12), ("H", 3)):
         ws.column_dimensions[col].width = w
 
     cs = f"'{SHEETS.calculations}'"
@@ -77,7 +164,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     sig, mrg, mkup = _L(COL_SIGNAL), _L(COL_MARGIN_CUR), _L(COL_MARKUP_CUR)
     risk, vp, retail = _L(COL_RISK), _L(COL_VP_CUR), _L(COL_RETAIL)
-    avg_mkt, dev_avg = _L(COL_AVG_MKT), _L(COL_DEV_AVG)
+    avg_mkt, dev_avg, dev_med = _L(COL_AVG_MKT), _L(COL_DEV_AVG), _L(COL_DEV_MED)
     msig = _L(COL_MARGIN_SIG)
 
     ws.merge_cells("B2:G2")
@@ -90,7 +177,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.merge_cells("B3:G3")
     s = ws["B3"]
-    s.value = "Основные показатели по всему прайс-листу | Автообновление | Третий релиз"
+    s.value = "Основные показатели по всему прайс-листу | Автообновление | Релиз 3.5"
     s.font = font(size=10, color="595959")
     s.alignment = align("center")
     ws.row_dimensions[3].height = 16
@@ -129,6 +216,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.row_dimensions[12].height = 8
 
+    # --- Топ-10 по марже (слева) ---
     _section(ws, 13, 2, 4, "Топ-10 позиций по текущей марже %")
     for ci, h in enumerate(["Наименование", "Маржа %", "ВП/ед"], start=2):
         c = ws.cell(14, ci, h)
@@ -170,40 +258,53 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
             ColorScaleRule(start_type="min", start_color="FFEB84", end_type="max", end_color="63BE7B"),
         )
 
-    _section(ws, 13, 5, 7, "Топ-10 выше рынка (откл.от средней)", PALETTE.brown)
-    for ci, h in enumerate(["Наименование", "Откл.%", "Цена ЗЯ"], start=5):
-        c = ws.cell(14, ci, h)
-        c.fill = fill(PALETTE.brown)
-        c.font = font(bold=True, size=10, color=PALETTE.white)
-        c.alignment = HDR_ALIGN
-        c.border = border_thin()
+    # Справка по критическому риску (справа от топа маржи)
+    _section(ws, 13, 5, 7, "Что значит «критич. риск»", PALETTE.accent_red)
+    ws.merge_cells("E14:G24")
+    note = ws["E14"]
+    note.value = (
+        "«С критич.риском» — число позиций, у которых маржа упала бы ниже 5%, "
+        "если снизить цену ЗЯ до минимального конкурента.\n\n"
+        "КРИТИЧНО (<5%) — снижать цену опасно.\n"
+        "УМЕРЕННЫЙ (5–15%) — требует мониторинга.\n"
+        "НИЗКИЙ (>15%) — запас прочности достаточный.\n\n"
+        "См. также столбец «Риск потери ВП» на листе Расчеты (светофор)."
+    )
+    note.font = font(size=10)
+    note.alignment = align("left", wrap=True, indent=1)
+    note.fill = fill(PALETTE.red_bg)
+    note.border = border_thin()
 
-    for rk in range(1, top_n + 1):
-        row_i = 14 + rk
-        c = ws.cell(row_i, 5,
-            f'=IFERROR(INDEX({cs}!A$3:A${last},MATCH(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",'
-            f'{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),{cs}!{dev_avg}$3:{dev_avg}${last},0)),"")')
-        c.font = font(size=10)
-        c.alignment = align("left", indent=1)
-        c.border = border_thin()
+    # --- Отклонения от средней ---
+    ws.row_dimensions[25].height = 8
+    _top10_block(
+        ws, section_row=26, header_row=27, c1=2,
+        title="Топ-10 выше рынка (откл. от средней)",
+        title_color=PALETTE.brown, headers=["Наименование", "Откл.%", "Цена ЗЯ"],
+        header_color=PALETTE.brown, cs=cs, last=last, top_n=top_n,
+        metric_col=dev_avg, retail_col=retail, extreme="LARGE",
+    )
+    _top10_block(
+        ws, section_row=26, header_row=27, c1=5,
+        title="Топ-10 ниже рынка (откл. от средней)",
+        title_color=PALETTE.dark_green, headers=["Наименование", "Откл.%", "Цена ЗЯ"],
+        header_color=PALETTE.dark_green, cs=cs, last=last, top_n=top_n,
+        metric_col=dev_avg, retail_col=retail, extreme="SMALL",
+    )
 
-        c = ws.cell(row_i, 6,
-            f'=IFERROR(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),"")')
-        c.font = font(bold=True, size=10, color="C00000")
-        c.number_format = PCT_SIGNED
-        c.alignment = align("center")
-        c.border = border_thin()
-
-        c = ws.cell(row_i, 7,
-            f'=IFERROR(INDEX({cs}!{retail}$3:{retail}${last},MATCH(LARGE(IF({cs}!{dev_avg}$3:{dev_avg}${last}<>"",'
-            f'{cs}!{dev_avg}$3:{dev_avg}${last}),{rk}),{cs}!{dev_avg}$3:{dev_avg}${last},0)),"")')
-        c.font = font(size=10)
-        c.number_format = NUM2
-        c.alignment = align("right")
-        c.border = border_thin()
-
-    if top_n > 0:
-        ws.conditional_formatting.add(
-            f"F15:F{14 + top_n}",
-            ColorScaleRule(start_type="min", start_color="FFEB84", end_type="max", end_color="F8696B"),
-        )
+    # --- Отклонения от медианы ---
+    ws.row_dimensions[38].height = 8
+    _top10_block(
+        ws, section_row=39, header_row=40, c1=2,
+        title="Топ-10 выше рынка (откл. от медианы)",
+        title_color=PALETTE.brown, headers=["Наименование", "Откл.%", "Цена ЗЯ"],
+        header_color=PALETTE.brown, cs=cs, last=last, top_n=top_n,
+        metric_col=dev_med, retail_col=retail, extreme="LARGE",
+    )
+    _top10_block(
+        ws, section_row=39, header_row=40, c1=5,
+        title="Топ-10 ниже рынка (откл. от медианы)",
+        title_color=PALETTE.dark_green, headers=["Наименование", "Откл.%", "Цена ЗЯ"],
+        header_color=PALETTE.dark_green, cs=cs, last=last, top_n=top_n,
+        metric_col=dev_med, retail_col=retail, extreme="SMALL",
+    )
