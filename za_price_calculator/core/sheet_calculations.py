@@ -27,11 +27,43 @@ XREF_FONT = font(size=10, color=PALETTE.xref_text)
 INPUT_FILL = fill(PALETTE.input_blue_bg)
 YELLOW_FILL = fill(PALETTE.yellow_bg)
 GREEN_FILL = fill(PALETTE.green_bg)
-ORANGE_FILL = fill(PALETTE.orange)
+ORANGE_FILL = fill(PALETTE.orange_bg)
+MARKUP_HIGH_FILL = fill(PALETTE.markup_high_bg)
 
-# Пороги условного форматирования «Наценка сейчас» (шаг 1% = 0.01).
+# Пороги заливки «Наценка сейчас» (шаг 1% = 0.01).
 MARKUP_NOW_LOW = 0.20   # ниже 20% → оранжевый
 MARKUP_NOW_HIGH = 0.60  # выше 60% → зелёный
+
+
+def _markup_now_fill(markup) -> object:
+    """Заливка ячейки «Наценка сейчас» по значению (шаг 1 п.п.)."""
+    if markup is None:
+        return YELLOW_FILL
+    try:
+        # Шаг 1%: округление до 2 знаков (0.01 = 1 п.п.).
+        m = round(float(markup), 2)
+    except (TypeError, ValueError):
+        return YELLOW_FILL
+    if m < MARKUP_NOW_LOW:
+        return ORANGE_FILL
+    if m > MARKUP_NOW_HIGH:
+        return MARKUP_HIGH_FILL
+    return YELLOW_FILL
+
+
+def _source_markup(ws: Worksheet, src_row: int):
+    """Считает наценку из листа исходных данных (Закуп. C, Розн. D)."""
+    src_ws = ws.parent[SHEETS.source]
+    purch = src_ws.cell(src_row, 3).value
+    retail = src_ws.cell(src_row, 4).value
+    try:
+        p = float(purch)
+        r = float(retail)
+    except (TypeError, ValueError):
+        return None
+    if p <= 0 or r <= 0:
+        return None
+    return (r - p) / p
 
 # Индексы колонок (1-based). После «Розничная цена ЗЯ» добавлены 3 колонки (+3 сдвиг).
 COL_NAME = 1
@@ -273,10 +305,13 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         _write(ws, r, COL_PURCHASE, f"={src}!C{sr}", NUM2)
         _write(ws, r, COL_RETAIL, f"={src}!D{sr}", NUM2)
 
-        # Наценка сейчас = (Розн. ЗЯ − Закуп.) / Закуп. — жёлтая заливка (релиз 3.5)
+        # Наценка сейчас = (Розн. ЗЯ − Закуп.) / Закуп.
+        # Заливка сразу по значению: <20% оранжевый, >60% зелёный, иначе жёлтый.
+        # CF ниже дублирует правило на случай пересчёта цен в Excel.
+        markup_val = _source_markup(ws, sr)
         _write(ws, r, COL_MARKUP_NOW,
                f'=IF(AND({C}{r}>0,{D}{r}>0),({D}{r}-{C}{r})/{C}{r},"")', PCT,
-               cell_fill=YELLOW_FILL)
+               cell_fill=_markup_now_fill(markup_val))
         # Новая Розничная цена ЗЯ — ручной ввод [ВВОД], зелёная заливка; С4 ссылается сюда
         _write(ws, r, COL_NEW_RETAIL, None, NUM2, is_input=True, cell_fill=GREEN_FILL)
         # Наценка новая = (Новая розн. − Закуп.) / Закуп. — зелёная заливка
@@ -415,26 +450,24 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
         DataBarRule(start_type="min", end_type="max", color="4472C4"),
     )
 
-    # «Наценка сейчас»: <20% (шаг 1%) — оранжевый; >60% (шаг 1%) — зелёный.
-    # ROUND(..., 2) даёт оценку с точностью 1 п.п.; пустые ячейки не окрашиваются.
+    # «Наценка сейчас»: <20% — оранжевый; >60% — зелёный (шаг 1%).
+    # Дублирует статическую заливку, чтобы цвет обновлялся при ручной правке цен.
     mk_now_L = _L(COL_MARKUP_NOW)
     mk_now_rng = f"{mk_now_L}3:{mk_now_L}{last_data_row}"
     ws.conditional_formatting.add(
         mk_now_rng,
         FormulaRule(
-            formula=[
-                f'AND(ISNUMBER({mk_now_L}3),ROUND({mk_now_L}3,2)<{MARKUP_NOW_LOW})'
-            ],
+            formula=[f'AND(ISNUMBER({mk_now_L}3),{mk_now_L}3<{MARKUP_NOW_LOW})'],
             fill=ORANGE_FILL,
+            stopIfTrue=True,
         ),
     )
     ws.conditional_formatting.add(
         mk_now_rng,
         FormulaRule(
-            formula=[
-                f'AND(ISNUMBER({mk_now_L}3),ROUND({mk_now_L}3,2)>{MARKUP_NOW_HIGH})'
-            ],
-            fill=GREEN_FILL,
+            formula=[f'AND(ISNUMBER({mk_now_L}3),{mk_now_L}3>{MARKUP_NOW_HIGH})'],
+            fill=MARKUP_HIGH_FILL,
+            stopIfTrue=True,
         ),
     )
 

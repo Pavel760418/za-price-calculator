@@ -110,6 +110,8 @@ class Palette:
     green_bg: str = "E2EFDA"
     red_bg: str = "FCE4D6"
     yellow_bg: str = "FFEB84"
+    orange_bg: str = "ED7D31"  # яркий оранжевый для наценки <20%
+    markup_high_bg: str = "70AD47"  # зелёный для наценки >60%
     grey_bg: str = "F2F2F2"
     white: str = "FFFFFF"
     accent_green: str = "00B050"
