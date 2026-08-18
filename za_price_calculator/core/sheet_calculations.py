@@ -27,6 +27,11 @@ XREF_FONT = font(size=10, color=PALETTE.xref_text)
 INPUT_FILL = fill(PALETTE.input_blue_bg)
 YELLOW_FILL = fill(PALETTE.yellow_bg)
 GREEN_FILL = fill(PALETTE.green_bg)
+ORANGE_FILL = fill(PALETTE.orange)
+
+# Пороги условного форматирования «Наценка сейчас» (шаг 1% = 0.01).
+MARKUP_NOW_LOW = 0.20   # ниже 20% → оранжевый
+MARKUP_NOW_HIGH = 0.60  # выше 60% → зелёный
 
 # Индексы колонок (1-based). После «Розничная цена ЗЯ» добавлены 3 колонки (+3 сдвиг).
 COL_NAME = 1
@@ -408,6 +413,29 @@ def build_calculations_sheet(ws: Worksheet, n_rows: int) -> None:
     ws.conditional_formatting.add(
         f"{T}3:{T}{last_data_row}",
         DataBarRule(start_type="min", end_type="max", color="4472C4"),
+    )
+
+    # «Наценка сейчас»: <20% (шаг 1%) — оранжевый; >60% (шаг 1%) — зелёный.
+    # ROUND(..., 2) даёт оценку с точностью 1 п.п.; пустые ячейки не окрашиваются.
+    mk_now_L = _L(COL_MARKUP_NOW)
+    mk_now_rng = f"{mk_now_L}3:{mk_now_L}{last_data_row}"
+    ws.conditional_formatting.add(
+        mk_now_rng,
+        FormulaRule(
+            formula=[
+                f'AND(ISNUMBER({mk_now_L}3),ROUND({mk_now_L}3,2)<{MARKUP_NOW_LOW})'
+            ],
+            fill=ORANGE_FILL,
+        ),
+    )
+    ws.conditional_formatting.add(
+        mk_now_rng,
+        FormulaRule(
+            formula=[
+                f'AND(ISNUMBER({mk_now_L}3),ROUND({mk_now_L}3,2)>{MARKUP_NOW_HIGH})'
+            ],
+            fill=GREEN_FILL,
+        ),
     )
 
     # Светофор: Сигнал маржи и Риск потери ВП
