@@ -177,7 +177,7 @@ def build_dashboard_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.merge_cells("B3:G3")
     s = ws["B3"]
-    s.value = "Основные показатели по всему прайс-листу | Автообновление | Релиз 3.5"
+    s.value = "Основные показатели по всему прайс-листу | Автообновление | Релиз 3.6"
     s.font = font(size=10, color="595959")
     s.alignment = align("center")
     ws.row_dimensions[3].height = 16

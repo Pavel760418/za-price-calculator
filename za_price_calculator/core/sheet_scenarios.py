@@ -56,7 +56,7 @@ def build_scenarios_sheet(ws: Worksheet, n_rows: int) -> None:
 
     ws.merge_cells("B2:H2")
     t = ws["B2"]
-    t.value = "СЦЕНАРНЫЙ АНАЛИЗ - Сравнение сценариев (видимые: С2, С4) | Релиз 3.5"
+    t.value = "СЦЕНАРНЫЙ АНАЛИЗ - Сравнение сценариев (видимые: С2, С4) | Релиз 3.6"
     t.font = font(bold=True, size=14, color=PALETTE.white)
     t.fill = fill(PALETTE.dark_blue)
     t.alignment = align("center")
