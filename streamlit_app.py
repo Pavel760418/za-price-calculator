@@ -59,8 +59,8 @@ COMPETITOR_LABELS = {
     "Цена_Оптовик_Редукторный": "Оптовик (Редукторный)",
 }
 
-APP_VERSION = "2026-08-19.7"
-RELEASE_LABEL = "Релиз 3.7"
+APP_VERSION = "2026-08-19.7.1"
+RELEASE_LABEL = "Релиз 3.7.1"
 
 GREEN = "#1a7f37"
 GREEN_LIGHT = "#2ea043"
@@ -153,27 +153,85 @@ st.markdown(
       .za-loading .sub { margin-top: 8px; font-size: 16px; font-weight: 600; color: #3d6b52; }
 
       div[data-testid="stMetric"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f3fbf6 100%);
-        border: 1px solid #cfe8d8; border-radius: 18px;
+        background: linear-gradient(180deg, #ffffff 0%, #f3fbf6 100%) !important;
+        border: 1px solid #cfe8d8 !important; border-radius: 18px;
         padding: 18px 18px 14px; box-shadow: 0 8px 22px rgba(16,24,40,.10);
         min-height: 118px;
       }
-      div[data-testid="stMetricLabel"] p {
-        font-size: 15px !important; color:#1f3d2d !important; font-weight:800 !important;
+      /* Подписи KPI: всегда тёмный текст на белой карточке (в т.ч. dark mode) */
+      div[data-testid="stMetric"] label,
+      div[data-testid="stMetricLabel"],
+      div[data-testid="stMetricLabel"] *,
+      div[data-testid="stMetricLabel"] p,
+      div[data-testid="stMetricLabel"] span {
+        font-size: 15px !important;
+        color: #0b3d28 !important;
+        font-weight: 800 !important;
+        opacity: 1 !important;
       }
-      div[data-testid="stMetricValue"] {
+      div[data-testid="stMetricValue"],
+      div[data-testid="stMetricValue"] * {
         font-size: 34px !important; color:#0f5132 !important; font-weight: 900 !important;
+        opacity: 1 !important;
       }
       div[data-testid="stMetricDelta"] { font-size: 14px !important; font-weight: 700 !important; }
 
+      /* Оглавления — светлый текст на зелёной плашке: читаемо в light и dark */
       .za-section-title {
-        font-size: 24px; font-weight: 900; color: #0f5132; margin: 6px 0 12px;
+        display: inline-block;
+        font-size: 24px; font-weight: 900; letter-spacing: .2px;
+        color: #ffffff !important;
+        background: linear-gradient(90deg, #0f5132 0%, #1a7f37 100%);
+        padding: 10px 18px; border-radius: 12px; margin: 8px 0 14px;
+        box-shadow: 0 6px 16px rgba(15,81,50,.28);
+        border: 1px solid rgba(255,255,255,.25);
       }
-      .za-chart-title {
-        font-size: 20px; font-weight: 800; color: #123d28; margin: 0 0 10px;
+      .za-chart-title, .za-table-title {
+        display: inline-block;
+        font-size: 18px; font-weight: 800;
+        color: #ffffff !important;
+        background: #147a3a;
+        padding: 7px 14px; border-radius: 10px; margin: 8px 0 10px;
+        box-shadow: 0 4px 12px rgba(15,81,50,.22);
       }
-      .za-table-title {
-        font-size: 17px; font-weight: 800; color: #123d28; margin: 10px 0 8px;
+      .za-table-title { font-size: 16px; background: #1f6a3c; }
+      .za-lead {
+        font-size: 16px; font-weight: 700; margin: 0 0 12px;
+        color: #0f5132;
+        background: #e8f7ee; border: 1px solid #b7e0c4;
+        padding: 12px 14px; border-radius: 12px;
+      }
+      /* Dark mode: ещё ярче плашки и подводки */
+      [data-theme="dark"] .za-section-title,
+      html[data-theme="dark"] .za-section-title,
+      .stApp[data-theme="dark"] .za-section-title {
+        color: #ffffff !important;
+        background: linear-gradient(90deg, #1a9a4a 0%, #2bb34f 100%) !important;
+        box-shadow: 0 0 0 1px rgba(255,255,255,.35), 0 8px 20px rgba(0,0,0,.45);
+      }
+      [data-theme="dark"] .za-chart-title,
+      [data-theme="dark"] .za-table-title,
+      html[data-theme="dark"] .za-chart-title,
+      html[data-theme="dark"] .za-table-title,
+      .stApp[data-theme="dark"] .za-chart-title,
+      .stApp[data-theme="dark"] .za-table-title {
+        color: #ffffff !important;
+        background: #2bb34f !important;
+      }
+      [data-theme="dark"] .za-lead,
+      html[data-theme="dark"] .za-lead,
+      .stApp[data-theme="dark"] .za-lead {
+        color: #eafff2 !important;
+        background: #1a3d2a !important;
+        border-color: #2bb34f !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .za-section-title {
+          color: #ffffff !important;
+          background: linear-gradient(90deg, #1a9a4a 0%, #2bb34f 100%) !important;
+        }
+        .za-chart-title, .za-table-title { color: #ffffff !important; background: #2bb34f !important; }
+        .za-lead { color: #eafff2 !important; background: #1a3d2a !important; border-color: #2bb34f !important; }
       }
 
       .za-insight {
@@ -240,21 +298,24 @@ st.markdown(
 st.caption(
     f"🔖 {RELEASE_LABEL} · версия интерфейса: {APP_VERSION} · "
     "обновлённый UI дашборда, таблицы отклонений, сценарии С2/С4. "
-    "Если подпись «Релиз 3.7» не видна — на Streamlit Cloud: Manage app → Reboot, "
+    "Если подпись «Релиз 3.7.1» не видна — на Streamlit Cloud: Manage app → Reboot, "
     "затем Ctrl/Cmd+Shift+R."
 )
 
-with st.expander("ℹ️ Что нового в релизе 3.7", expanded=False):
+with st.expander("ℹ️ Что нового в релизе 3.7.1", expanded=False):
     st.markdown(
         """
-**Визуал Streamlit**
+**Контраст в тёмном режиме**
+- Оглавления блоков — белый текст на зелёной плашке (читаемо на тёмном фоне)
+- Подписи KPI на белых карточках принудительно тёмные и жирные
+
+**Визуал Streamlit (3.7)**
 - Крупный яркий заголовок AI-агента и выразительное описание в шапке
 - Экран загрузки: крупный 🤖 и текст «AI агент работает»
 - Объёмные KPI-карточки, крупные подписи к графикам
 - ТОП отклонений: добавлена цена конкурента; подсветка ±15%
 - Выводы AI — светофорные блоки; сценарии — насыщенная таблица
-- При наличии продаж: текущая ВП и прирост при выравнивании до медианы
-  (только позиции с ценой ниже медианы рынка)
+- При наличии продаж: текущая ВП и эффект выравнивания до медианы
         """
     )
 
@@ -836,7 +897,7 @@ with tab_scen:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p style="font-size:16px;font-weight:700;color:#1a3d2a;margin:0 0 12px;">'
+        '<p class="za-lead">'
         "Для пользователя видимы <b>С2: Медиана рынка</b> и "
         "<b>С4: Произв.цена</b>. Сценарии С1, С3, С5 скрыты. "
         "С4 заполняется вручную в колонке «Новая Розничная цена ЗЯ»."
